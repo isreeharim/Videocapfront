@@ -1,73 +1,61 @@
-let mediaStream = null;
-let mediaRecorder = null;
+const video = document.getElementById('video');
+const startBtn = document.getElementById('start-btn');
+const stopBtn = document.getElementById('stop-btn');
+
+let mediaRecorder;
 let recordedChunks = [];
 
-// DOM Elements
-const preview = document.getElementById("preview");
-const grantAccessButton = document.getElementById("grant-access");
-const endSessionButton = document.getElementById("end-session");
-const uploadStatus = document.getElementById("upload-status");
+// Request camera access
+navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+  .then((stream) => {
+    video.srcObject = stream;
 
-// Grant camera access
-grantAccessButton.addEventListener("click", async () => {
-  try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
-    preview.srcObject = mediaStream;
-    endSessionButton.disabled = false;
-    grantAccessButton.disabled = true;
-    uploadStatus.textContent = "Camera access granted. You can record a video.";
-  } catch (error) {
-    alert("Unable to access the camera. Please check your permissions.");
-    console.error("Error accessing camera:", error);
-  }
-});
+    // Set up MediaRecorder
+    mediaRecorder = new MediaRecorder(stream);
 
-// End session and record video
-endSessionButton.addEventListener("click", () => {
-  if (mediaStream) {
-    mediaRecorder = new MediaRecorder(mediaStream);
-
-    // Collect video chunks
     mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
         recordedChunks.push(event.data);
       }
     };
 
-    // Stop recording and upload video
     mediaRecorder.onstop = () => {
-      const videoBlob = new Blob(recordedChunks, { type: "video/webm" });
-      uploadVideo(videoBlob); // Upload video to backend
-      recordedChunks = [];
-    };
+      // Create video file
+      const videoBlob = new Blob(recordedChunks, { type: 'video/webm' });
+      const formData = new FormData();
+      formData.append('video', videoBlob, 'recording.webm');
 
-    mediaRecorder.start();
-    setTimeout(() => {
-      mediaRecorder.stop();
-      endSessionButton.disabled = true;
-    }, 5000); // Record for 5 seconds
-  }
+      // Send video to backend
+      fetch('https://your-backend-url.com/upload', {
+        method: 'POST',
+        body: formData,
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          alert('Video uploaded successfully!');
+          console.log(data);
+        })
+        .catch((error) => {
+          console.error('Error uploading video:', error);
+        });
+    };
+  })
+  .catch((error) => {
+    console.error('Error accessing camera:', error);
+    alert('Camera access is required to use this app.');
+  });
+
+// Start recording
+startBtn.addEventListener('click', () => {
+  recordedChunks = [];
+  mediaRecorder.start();
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
 });
 
-// Upload video to backend
-async function uploadVideo(blob) {
-  const formData = new FormData();
-  formData.append("video", blob, "session-video.webm");
-
-  try {
-    const response = await fetch("https://your-backend-url/upload", {
-      method: "POST",
-      body: formData,
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      uploadStatus.textContent = "Video uploaded successfully!";
-    } else {
-      uploadStatus.textContent = "Failed to upload video.";
-    }
-  } catch (error) {
-    uploadStatus.textContent = "Error uploading video. Check console.";
-    console.error("Upload error:", error);
-  }
-}
+// Stop recording
+stopBtn.addEventListener('click', () => {
+  mediaRecorder.stop();
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+});
